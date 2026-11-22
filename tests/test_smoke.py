@@ -25,7 +25,8 @@ def test_health_and_seed():
     assert health["product"] == "保证金笼"
     assert health["bonds"] >= 4
     assert health["cages"] >= 3
-    assert "topup_cage" in health["meta"]["stubs"]
+    # 增补/拆笼已落地，空桩清单清空
+    assert health["meta"]["stubs"] == []
 
 
 def test_freeze_attest_release_flow():

@@ -48,6 +48,12 @@ class TopupIn(BaseModel):
     mode: str = "同笼扩代"
 
 
+class ChildTopupIn(BaseModel):
+    cage_id: int
+    amount: float = Field(gt=0)
+    mode: str = "子笼独立扩代整笔"
+
+
 class SplitIn(BaseModel):
     cage_id: int
     left_amount: float = Field(gt=0)

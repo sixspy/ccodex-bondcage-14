@@ -40,11 +40,14 @@ export const cagesViewTemplate = `
           class="cage-card"
           v-for="c in cages"
           :key="c.id"
-          :class="{selected: selectedCage && selectedCage.id===c.id}"
+          :class="{selected: selectedCage && selectedCage.id===c.id, child: c.parent_id != null}"
           @click="selectCage(c)"
         >
           <div class="stamp-corner">{{ shortStatus(c.status) }}</div>
-          <div class="code">{{ c.cage_code }}</div>
+          <div class="code">
+            {{ c.cage_code }}
+            <small v-if="c.parent_id != null" class="lineage-tag">子笼 · 根 {{ c.root_cage_code }}</small>
+          </div>
           <div class="amt">{{ fmt(c.available) }} / {{ fmt(c.amount) }}</div>
           <div>{{ c.contract_no }} · 代{{ c.generation }}</div>
           <div>{{ c.party_key }} → {{ c.beneficiary }}</div>
@@ -58,6 +61,7 @@ export const cagesViewTemplate = `
       <thead><tr><th>字段</th><th>值</th></tr></thead>
       <tbody>
         <tr><td>状态</td><td><span class="badge" :class="statusClass(cageDetail.cage.status)">{{ cageDetail.cage.status }}</span></td></tr>
+        <tr><td>谱系</td><td>{{ cageDetail.cage.parent_id != null ? ('子笼 · 父笼ID ' + cageDetail.cage.parent_id + ' · 根 ' + (cageDetail.cage.root_cage_code || '—')) : '根笼' }}</td></tr>
         <tr><td>可用 / 总额</td><td>{{ fmt(cageDetail.cage.available) }} / {{ fmt(cageDetail.cage.amount) }}</td></tr>
         <tr><td>核验条数</td><td>{{ cageDetail.attestations.length }}</td></tr>
         <tr><td>拨付条数</td><td>{{ cageDetail.releases.length }}</td></tr>

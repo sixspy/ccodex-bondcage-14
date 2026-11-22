@@ -61,8 +61,20 @@ export const bondsViewTemplate = `
       </table>
       <div v-if="bondDetail" style="margin-top:12px">
         <h3>明细 · {{ bondDetail.account.party_key }}</h3>
-        <p class="hint">入金流水 {{ bondDetail.deposits.length }} 条 · 关联笼 {{ bondDetail.cages.length }} 只</p>
+        <p class="hint">入金流水 {{ bondDetail.deposits.length }} 条 · 关联笼 {{ bondDetail.cages.length }} 只（含拆笼子笼，与账户同源）</p>
         <table>
+          <thead><tr><th>笼编码</th><th>谱系</th><th>可用/总额</th><th>代</th><th>状态</th></tr></thead>
+          <tbody>
+            <tr v-for="cg in bondDetail.cages" :key="cg.id">
+              <td>{{ cg.cage_code }}</td>
+              <td>{{ cg.parent_id != null ? ('子笼 · 根 ' + (cg.root_cage_code || '—')) : '根笼' }}</td>
+              <td>{{ fmt(cg.available) }} / {{ fmt(cg.amount) }}</td>
+              <td>{{ cg.generation }}</td>
+              <td>{{ cg.status }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <table style="margin-top:10px">
           <thead><tr><th>入金</th><th>备注</th><th>时间</th><th>操作者</th></tr></thead>
           <tbody>
             <tr v-for="d in bondDetail.deposits" :key="d.id">

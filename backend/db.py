@@ -26,7 +26,7 @@ PRODUCT_META = {
         "topup",
         "split",
     ],
-    "stubs": ["topup_cage", "split_cage"],
+    "stubs": [],
 }
 
 
@@ -35,6 +35,7 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=30000")
     return conn
 
 
@@ -77,6 +78,8 @@ CREATE TABLE IF NOT EXISTS cages(
   beneficiary TEXT NOT NULL,
   created_at TEXT NOT NULL,
   frozen_at TEXT,
+  parent_id INTEGER,
+  root_cage_code TEXT,
   FOREIGN KEY(party_key) REFERENCES bond_accounts(party_key)
 );
 CREATE TABLE IF NOT EXISTS attestations(
@@ -159,7 +162,37 @@ CREATE TABLE IF NOT EXISTS deposit_ledger(
   created_at TEXT NOT NULL,
   actor TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS child_topup_minutes(
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  minute_no TEXT NOT NULL,
+  locked_date TEXT NOT NULL,
+  chosen_path TEXT NOT NULL,
+  rejected_path TEXT NOT NULL,
+  rule_text TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 """
+
+# 子笼扩额纪要（当日锁死，单行不可变；服务端只允许读取与首次植入）
+CHILD_TOPUP_MINUTE = {
+    "minute_no": "SCT-2026-1122-001",
+    "locked_date": "2026-11-22",
+    "chosen_path": "甲路径-子笼独立扩代整笔",
+    "rejected_path": "乙路径-经已关闭父笼桥接影子单再晋升",
+    "rule_text": (
+        "对子笼编号同事务从账户划入抬额升代写审计，失败则账户与子笼同滚；"
+        "禁止经父笼桥接；偏离记子笼扩额偏航并拒写；双人同扩抢笼锁，后到只留争用痕。"
+    ),
+}
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """加列式轻量迁移：不换库文件、不动既有数据。"""
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(cages)").fetchall()}
+    if "parent_id" not in cols:
+        conn.execute("ALTER TABLE cages ADD COLUMN parent_id INTEGER")
+    if "root_cage_code" not in cols:
+        conn.execute("ALTER TABLE cages ADD COLUMN root_cage_code TEXT")
 
 
 def write_audit(conn: sqlite3.Connection, actor: str, action: str, target: str, payload: dict) -> None:
@@ -269,13 +302,50 @@ def seed_attest_samples(conn: sqlite3.Connection) -> None:
         # 不预置通过/违约结论，只保证表可查；实际核验由业务动作写入
 
 
+def seed_child_topup_minute(conn: sqlite3.Connection) -> None:
+    """当日锁死的子笼扩额纪要：单行 CHECK(id=1)，只首次植入、永不改。"""
+    exists = conn.execute(
+        "SELECT id FROM child_topup_minutes WHERE id=1"
+    ).fetchone()
+    if exists:
+        return
+    conn.execute(
+        """INSERT INTO child_topup_minutes(id,minute_no,locked_date,chosen_path,
+           rejected_path,rule_text,created_at)
+           VALUES (1,?,?,?,?,?,?)""",
+        (
+            CHILD_TOPUP_MINUTE["minute_no"],
+            CHILD_TOPUP_MINUTE["locked_date"],
+            CHILD_TOPUP_MINUTE["chosen_path"],
+            CHILD_TOPUP_MINUTE["rejected_path"],
+            CHILD_TOPUP_MINUTE["rule_text"],
+            now_iso(),
+        ),
+    )
+
+def load_child_topup_minute(conn: sqlite3.Connection) -> dict:
+    row = conn.execute(
+        "SELECT * FROM child_topup_minutes WHERE id=1"
+    ).fetchone()
+    if not row:
+        # 极端情况下未植入：补植并返回，保证锁死口径在线
+        seed_child_topup_minute(conn)
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM child_topup_minutes WHERE id=1"
+        ).fetchone()
+    return dict(row)
+
+
 def init_db() -> None:
     with connect() as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
         seed_users(conn)
         seed_bonds(conn)
         seed_cages(conn)
         seed_attest_samples(conn)
+        seed_child_topup_minute(conn)
         conn.commit()
 
 

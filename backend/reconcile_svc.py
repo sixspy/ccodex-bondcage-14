@@ -25,6 +25,17 @@ def _reconcile_cage(conn, cage) -> dict:
         (cage_id, gen),
     ).fetchone()["s"]
     accounted = round(float(available) + float(released) + float(forfeited), 6)
+    # 已拆笼父笼：金额已在拆笼事务整笔平移到子笼，按拆笼台账（split_jobs）计平移额；
+    # 子笼此后独立扩额与父笼切断，不计入父笼口径
+    split_to_children = 0.0
+    if cage["status"] == "已拆笼":
+        split_to_children = float(
+            conn.execute(
+                "SELECT COALESCE(SUM(left_amount + right_amount),0) s FROM split_jobs WHERE cage_id=?",
+                (cage_id,),
+            ).fetchone()["s"]
+        )
+        accounted = round(accounted + split_to_children, 6)
     ok = abs(accounted - amount) < 1e-6
     # 账户侧：该当事人冻结额应覆盖所有仍冻结/核验中的笼可用
     party = cage["party_key"]
@@ -44,10 +55,13 @@ def _reconcile_cage(conn, cage) -> dict:
         "contract_no": cage["contract_no"],
         "generation": gen,
         "status": cage["status"],
+        "parent_id": cage["parent_id"] if "parent_id" in cage.keys() else None,
+        "root_cage_code": cage["root_cage_code"] if "root_cage_code" in cage.keys() else None,
         "amount": amount,
         "available": available,
         "released": float(released),
         "forfeited": float(forfeited),
+        "split_to_children": split_to_children,
         "accounted": accounted,
         "balanced": ok,
         "gap": round(amount - accounted, 6),

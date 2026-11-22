@@ -30,7 +30,6 @@ createApp({
       "审计争用",
       "增补拆笼",
     ];
-
     const bonds = ref([]);
     const cages = ref([]);
     const attestations = ref([]);
@@ -84,7 +83,7 @@ createApp({
     const topupForm = ref({
       cage_id: 0,
       amount: 10000,
-      mode: "同笼扩代",
+      mode: "子笼独立扩代整笔",
     });
     const splitForm = ref({
       cage_id: 0,
@@ -92,6 +91,7 @@ createApp({
       right_amount: 10000,
       mode: "整笔切分",
     });
+    const topupMinutes = ref({});
 
     function logout() {
       token.value = "";
@@ -139,6 +139,20 @@ createApp({
     const failCages = computed(() =>
       cages.value.filter(
         (c) => c.status === "核验违约" || c.status === "部分罚没"
+      )
+    );
+    // 拆笼所得子笼（有父笼谱系），增补页只允许选这些
+    const childCages = computed(() =>
+      cages.value.filter((c) => c.parent_id != null && c.status !== "已拆笼")
+    );
+    // 可拆父笼：活笼、有可用额、尚未拆笼关闭
+    const splittableCages = computed(() =>
+      cages.value.filter(
+        (c) =>
+          c.status !== "已拆笼" &&
+          c.status !== "已解笼" &&
+          c.status !== "已罚没" &&
+          Number(c.available) > 0
       )
     );
 
@@ -195,6 +209,7 @@ createApp({
           lk,
           tj,
           sj,
+          tm,
         ] = await Promise.all([
           api.bonds(),
           api.cages(),
@@ -207,6 +222,7 @@ createApp({
           api.locks(),
           api.topupJobs(),
           api.splitJobs(),
+          api.topupMinutes(),
         ]);
         bonds.value = b.items || [];
         cages.value = c.items || [];
@@ -219,6 +235,7 @@ createApp({
         locks.value = lk.items || [];
         topupJobs.value = tj.items || [];
         splitJobs.value = sj.items || [];
+        topupMinutes.value = tm || {};
         if (!attestForm.value.cage_id && frozenCages.value.length) {
           attestForm.value.cage_id = frozenCages.value[0].id;
         }
@@ -228,11 +245,11 @@ createApp({
         if (!forfeitForm.value.cage_id && failCages.value.length) {
           forfeitForm.value.cage_id = failCages.value[0].id;
         }
-        if (!topupForm.value.cage_id && cages.value.length) {
-          topupForm.value.cage_id = cages.value[0].id;
+        if (!topupForm.value.cage_id && childCages.value.length) {
+          topupForm.value.cage_id = childCages.value[0].id;
         }
-        if (!splitForm.value.cage_id && cages.value.length) {
-          const cg = cages.value[0];
+        if (!splitForm.value.cage_id && splittableCages.value.length) {
+          const cg = splittableCages.value[0];
           splitForm.value.cage_id = cg.id;
           const half = Math.floor(Number(cg.available) / 2);
           splitForm.value.left_amount = half;
@@ -362,24 +379,43 @@ createApp({
       }
     }
 
-    async function doTopupStub() {
+    async function doChildTopup() {
       clearFlash();
       try {
-        if (!topupForm.value.cage_id) throw new Error("请选择笼");
-        const row = await api.topupStub(topupForm.value);
-        flashOk(`增补空桩已登记 #${row.job_id}`);
+        if (!topupForm.value.cage_id) throw new Error("请选择拆笼所得子笼");
+        const row = await api.topupChild({
+          cage_id: topupForm.value.cage_id,
+          amount: topupForm.value.amount,
+          mode: "子笼独立扩代整笔",
+        });
+        flashOk(`子笼扩额成功 #${row.topup_job_id}（代${row.cage.generation}）`);
         await refresh();
       } catch (e) {
         flashErr(e);
       }
     }
 
-    async function doSplitStub() {
+    function onSplitCageChange() {
+      const cg = cages.value.find((x) => x.id === splitForm.value.cage_id);
+      if (!cg) return;
+      const half = Math.floor(Number(cg.available) / 2);
+      splitForm.value.left_amount = half;
+      splitForm.value.right_amount = Number(cg.available) - half;
+    }
+
+    async function doSplit() {
       clearFlash();
       try {
-        if (!splitForm.value.cage_id) throw new Error("请选择笼");
-        const row = await api.splitStub(splitForm.value);
-        flashOk(`拆笼空桩已登记 #${row.job_id}`);
+        if (!splitForm.value.cage_id) throw new Error("请选择待拆父笼");
+        const row = await api.split({
+          cage_id: splitForm.value.cage_id,
+          left_amount: splitForm.value.left_amount,
+          right_amount: splitForm.value.right_amount,
+          mode: "整笔切分",
+        });
+        flashOk(
+          `拆笼成功 #${row.split_job_id}：子笼 ${row.left_child_id} / ${row.right_child_id}`
+        );
         await refresh();
       } catch (e) {
         flashErr(e);
@@ -425,9 +461,12 @@ createApp({
       forfeitForm,
       topupForm,
       splitForm,
+      topupMinutes,
       frozenCages,
       passCages,
       failCages,
+      childCages,
+      splittableCages,
       login,
       logout,
       refresh,
@@ -444,8 +483,9 @@ createApp({
       doForfeit,
       loadReconcile,
       loadProof,
-      doTopupStub,
-      doSplitStub,
+      doChildTopup,
+      doSplit,
+      onSplitCageChange,
     };
   },
   template: `

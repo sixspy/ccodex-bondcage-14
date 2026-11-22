@@ -35,7 +35,8 @@ def get_bond(party_key: str, authorization: AuthHeader = None):
             (party_key,),
         ).fetchall()
         cages = conn.execute(
-            """SELECT id,cage_code,contract_no,amount,available,status,generation
+            """SELECT id,cage_code,contract_no,amount,available,status,generation,
+                      parent_id,root_cage_code
                FROM cages WHERE party_key=? ORDER BY id DESC""",
             (party_key,),
         ).fetchall()

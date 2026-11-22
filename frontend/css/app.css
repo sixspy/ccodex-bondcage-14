@@ -305,6 +305,20 @@ th {
 .cage-card.selected {
   outline: 3px solid var(--stamp);
 }
+.cage-card.child {
+  border-style: dashed;
+  border-color: var(--stamp-soft);
+}
+.lineage-tag {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--stamp);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
 .cage-card .code {
   font-family: var(--font-display);
   font-size: 16px;
